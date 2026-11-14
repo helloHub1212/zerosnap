@@ -1,0 +1,22 @@
+# Build output
+native/zerosnap-ui
+native/zerosnap-bench
+native/build/
+*.o
+*.so
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Local artefacts
+*.ppm
+*.img

@@ -1,0 +1,46 @@
+# Third-party components
+
+ZeroSnap itself is MIT licensed (see `LICENSE`).  It uses or references the
+following third-party work.
+
+## Bundled
+
+### tft9341 device-tree overlay — `install/overlays/tft9341.dtbo`
+
+Used to bring up the 2.4" ILI9341 panel and the ADS7846 touch controller on the
+SPI bus.  The blob and its decompiled source (`tft9341.dts`) come from the
+LCD-show project:
+
+- https://github.com/goodtft/LCD-show
+
+If your panel is already working with a different overlay, delete this file and
+adjust `install/install.sh` — ZeroSnap only needs a working `/dev/fb1` and a
+touch event device.
+
+## Runtime dependencies (not redistributed)
+
+| Component | License | Why |
+|---|---|---|
+| [libcamera](https://libcamera.org/) | LGPL-2.1+ / BSD-2-Clause | camera stack on Raspberry Pi OS |
+| [Picamera2](https://github.com/raspberrypi/picamera2) | BSD-2-Clause | Python camera control |
+| [numpy](https://numpy.org/) | BSD-3-Clause | preview buffers |
+| [Pillow](https://python-pillow.org/) | HPND | JPEG decode for gallery previews |
+| [pygame](https://www.pygame.org/) | LGPL-2.1 | only used by the removed pygame prototype, not by ZeroSnap |
+| Raspberry Pi OS / glibc | various | base system |
+
+## Build-time only (not redistributed)
+
+| Component | License | Why |
+|---|---|---|
+| DroidSansFallbackFull.ttf | Apache-2.0 | CJK glyphs for the pre-rendered text atlas |
+| Piboto | SIL Open Font License 1.1 | Latin glyphs in the same atlas |
+
+The generated `native/src/text_data.c` contains rasterised bitmaps produced from
+those fonts.  Rebuilding it requires the fonts on the build machine; see
+`native/tools/gen_font.py --help`.
+
+## Generated bitmaps
+
+`native/src/text_data.c` is generated from `native/tools/strings.txt`.  The
+bitmaps are derived from the fonts above; treat them as covered by the same
+font licences if you redistribute them separately.

@@ -1,0 +1,22 @@
+[Unit]
+Description=Native camera UI (framebuffer, no X)
+After=local-fs.target dev-shm.mount
+Conflicts=lightdm.service getty@tty1.service
+Before=getty@tty1.service
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/opt/zerosnap/start-camera.sh
+Restart=on-failure
+RestartSec=2
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardOutput=tty
+StandardError=tty
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
