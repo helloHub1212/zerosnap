@@ -2,11 +2,11 @@
 # Build the native UI for the Pi Zero.
 #
 # On the Pi itself:
-#     sudo bash camera-native/build-arm.sh --local
+#     sudo bash native/build-arm.sh --local
 #
 # From a Linux host with the SD card mounted and qemu-arm-static available
 # (no cross toolchain needed):
-#     sudo bash camera-native/build-arm.sh --root /mnt/card
+#     sudo bash native/build-arm.sh --root /mnt/card
 #
 # The chroot mode runs the card's own gcc under qemu, so the binary matches the
 # device's libc exactly and the device never has to compile anything on boot.

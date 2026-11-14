@@ -4,7 +4,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CC=${CC:-gcc}
-BIN="${TMPDIR:-/tmp}/camera-native-input-test.$$"
+BIN="${TMPDIR:-/tmp}/zerosnap-input-test.$$"
 
 trap 'rm -f "$BIN"' EXIT INT TERM
 

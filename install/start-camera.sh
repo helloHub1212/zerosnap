@@ -104,7 +104,7 @@ if [ -f "$NATIVE_SRC" ] && { [ ! -f "$NATIVE_LIB" ] || [ "$NATIVE_SRC" -nt "$NAT
 fi
 
 if [ ! -x "$UI" ]; then
-    log "错误：找不到 $UI（先在电脑上运行 camera-native/build-arm.sh）"
+    log "错误：找不到 $UI（先在电脑上运行 native/build-arm.sh）"
     printf 'zerosnap-ui 不存在：%s\n' "$UI"
     exit 1
 fi

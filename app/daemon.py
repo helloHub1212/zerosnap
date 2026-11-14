@@ -35,7 +35,7 @@ try:  # installed next to this module by install-camera.sh
     from .camera_shm import CameraShm
 except ImportError:  # source checkout or /opt/zerosnap/native
     for candidate in (
-        Path(__file__).resolve().parents[2] / "camera-native" / "python",
+        Path(__file__).resolve().parents[2] / "native",
         Path("/opt/zerosnap/native/python"),
     ):
         if (candidate / "camera_shm.py").is_file():
