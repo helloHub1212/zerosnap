@@ -92,12 +92,18 @@ log "enabled zerosnap-ui.service"
 mkdir -p "$ROOT/dev/shm"
 chmod 1777 "$ROOT/dev/shm" 2>/dev/null || true
 
+# The old prototype installed itself as camera-ui.service under /opt/camera.
+# Leaving it enabled would make two UIs fight over /dev/fb1.
 for stale in \
     "$UNIT_DIR/display-manager.service" \
     "$UNIT_DIR/multi-user.target.wants/lightdm.service" \
     "$UNIT_DIR/multi-user.target.wants/fbcp.service" \
     "$UNIT_DIR/multi-user.target.wants/getty@tty1.service" \
-    "$UNIT_DIR/timers.target.wants/camera-display-guard.timer"
+    "$UNIT_DIR/multi-user.target.wants/camera-ui.service" \
+    "$UNIT_DIR/camera-ui.service" \
+    "$UNIT_DIR/timers.target.wants/camera-display-guard.timer" \
+    "$UNIT_DIR/camera-display-guard.timer" \
+    "$UNIT_DIR/camera-display-guard.service"
 do
     if [ -e "$stale" ] || [ -L "$stale" ]; then
         rm -f "$stale"
