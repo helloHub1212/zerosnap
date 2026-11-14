@@ -1,0 +1,42 @@
+name: Bug report
+description: Something does not work on the device
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The log is the most useful thing you can attach.
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: Pi model, panel, camera
+      placeholder: Pi Zero v1.3, 2.4" ILI9341 + ADS7846, OV5647
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and kernel
+      placeholder: Raspberry Pi OS Bookworm 32-bit, 6.12.109+rpt-rpi-v6
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: What happens
+      description: Include the exact message shown on the panel, if any
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "Output of: sudo tail -40 /var/log/zerosnap/app.log"
+      render: shell
+  - type: input
+    id: overlay
+    attributes:
+      label: Overlay line
+      description: "Output of: grep dtoverlay /boot/firmware/config.txt"
+      placeholder: dtoverlay=tft9341:rotate=270,speed=32000000,fps=60,txbuflen=65536
