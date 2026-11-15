@@ -20,3 +20,6 @@ venv/
 # Local artefacts
 *.ppm
 *.img
+
+# Build-time font inputs (licences are documented in NOTICE.md)
+native/assets/

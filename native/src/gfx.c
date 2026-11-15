@@ -202,6 +202,51 @@ void gfx_fill_round(Gfx *g, int x, int y, int w, int h, int r, uint16_t color) {
     gfx_fill_circle(g, x + w - r - 1, y + h - r - 1, r - 1, color);
 }
 
+void gfx_fill_round_alpha(Gfx *g, int x, int y, int w, int h, int r,
+                          uint16_t color, int alpha) {
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    if (r * 2 > w) {
+        r = w / 2;
+    }
+    if (r * 2 > h) {
+        r = h / 2;
+    }
+    if (r <= 0) {
+        gfx_fill_alpha(g, x, y, w, h, color, alpha);
+        return;
+    }
+    /*
+     * For every row, the rounded corner removes a known inset from each
+     * side.  Blend one span per row instead of testing each pixel.
+     */
+    for (int row = 0; row < h; ++row) {
+        int dy;
+        int inset = 0;
+        if (row < r) {
+            dy = r - 1 - row;
+        } else if (row >= h - r) {
+            dy = row - (h - r);
+        } else {
+            gfx_fill_alpha(g, x, y + row, w, 1, color, alpha);
+            continue;
+        }
+        {
+            int rr = r * r - dy * dy;
+            int dx = 0;
+            while ((dx + 1) * (dx + 1) <= rr) {
+                ++dx;
+            }
+            inset = r - dx;
+        }
+        if (w - 2 * inset > 0) {
+            gfx_fill_alpha(g, x + inset, y + row, w - 2 * inset, 1, color,
+                           alpha);
+        }
+    }
+}
+
 void gfx_fill_alpha(Gfx *g, int x, int y, int w, int h, uint16_t color,
                     int alpha) {
     int x0 = x > g->cx ? x : g->cx;

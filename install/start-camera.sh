@@ -1,7 +1,7 @@
 #!/bin/bash
 # Native camera UI launcher: no X11, no SDL, no window manager.
 #
-# The C++ binary owns /dev/fb1 and the touch device; a Python daemon owns the
+# The C binary owns /dev/fb1 and the touch device; a Python daemon owns the
 # camera and the encoder.  They talk through /dev/shm.  This script starts
 # both, keeps the daemon alive while the UI runs, and leaves the console
 # visible (so the error is readable on the LCD) if the UI keeps crashing.

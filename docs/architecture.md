@@ -65,7 +65,9 @@ the Pi's single core this is sufficient without a portable fence.
   pressure-only panels, and coalesces moves at `SYN_REPORT`.
 - **Calibration**: `touchcal.c` stores three bits (swap, invert_x, invert_y).
   Two taps are mapped through all eight combinations; the one whose two points
-  land closest to the requested screen positions wins.
+  land closest to the requested screen positions wins. The wizard runs on every
+  boot; the saved transform is loaded first so it remains usable if the wizard
+  times out.
 
 ## The daemon
 
@@ -90,10 +92,16 @@ project started with. The UI never sends those commands any more.
 ```
 ~2.5 s  kernel, fbtft registers /dev/fb1
 ~6 s    zerosnap-ui.service starts; launcher waits for /dev/fb1
-~8 s    UI is up, shows "启动中" until the segment appears
-~9 s    daemon publishes the empty state, UI links
+~8 s    UI is up, opens touch and starts the two-tap calibration wizard
+~9 s    daemon publishes the empty state, UI links behind the wizard
 ~12 s   libcamera enumerates the OV5647, preview starts
+~tap 2  calibration is solved and the viewfinder becomes interactive
 ```
+
+The wizard has a 45 s deadline. If the panel never reports a touch, the UI
+falls back to `/boot/firmware/zerosnap-touch.conf` (or the identity transform
+when the file is absent) and continues to the viewfinder, so a dead touch panel
+cannot trap the device.
 
 If the UI cannot link within a second it retries forever; if the camera fails,
 the daemon retries every 5 s. Three fast UI failures stop the service so the
@@ -106,5 +114,7 @@ console (with the log) stays visible on the panel.
 | daemon crashes | supervisor restarts it after 2 s; UI reconnects automatically |
 | camera open fails | daemon logs it and retries every 5 s |
 | UI crashes 3× in 120 s | service exits; tty1 shows the console |
-| touch missing | UI runs without input; calibration times out after 45 s |
+| touch missing at boot | UI retries the device every 2 s; saved transform is used meanwhile |
+| calibration wizard times out | saved transform (identity if absent) stays active; UI continues |
+| touch device disappears | input is closed, then reopened and calibrated within 2 s |
 | panel missing | UI waits 8 s for `/dev/fb1`, then logs and exits |

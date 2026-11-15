@@ -19,7 +19,6 @@
 #include "gfx.h"
 #include "input.h"
 #include "ipc.h"
-#include "gfx.h"
 #include "text.h"
 #include "touchcal.h"
 #include "ui.h"
@@ -42,7 +41,7 @@ static double now_ms(void) {
 static void usage(const char *argv0) {
     fprintf(stderr,
             "usage: %s [--fb DEVICE] [--fps N] [--screenshot FILE] [--view V]\n"
-            "          [--frames N] [--preview FILE] [--calibrate]\n"
+            "          [--frames N] [--preview FILE] [--calibrate] [--no-calibrate]\n"
             "  --screenshot renders one frame to a PPM file and exits\n"
             "  V is one of: viewfinder, gallery, photo, settings\n",
             argv0);
@@ -150,6 +149,7 @@ int main(int argc, char **argv) {
     UiView shot_view = VIEW_VIEWFINDER;
     int target_fps = 30;
     int shot_calibrate = 0;
+    int no_calibrate = 0;
     long max_frames = 0; /* 0 = run until signalled */
 
     for (int i = 1; i < argc; ++i) {
@@ -165,6 +165,8 @@ int main(int argc, char **argv) {
             shot_preview = argv[++i];
         } else if (strcmp(argv[i], "--calibrate") == 0) {
             shot_calibrate = 1;
+        } else if (strcmp(argv[i], "--no-calibrate") == 0) {
+            no_calibrate = 1;
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             max_frames = atol(argv[++i]);
         } else if (strcmp(argv[i], "--help") == 0) {
@@ -200,8 +202,8 @@ int main(int argc, char **argv) {
         state.video_mode = CAM_VIDEO_1080P30;
         state.free_mb = 12800;
         state.battery_pct = 76;
-        state.photo_count = 3;
-        state.video_count = 1;
+        state.photo_count = 12;
+        state.video_count = 0;
         fake_frame(frame);
         if (shot_preview != NULL) {
             if (load_ppm_preview(shot_preview, frame) != 0) {
@@ -226,45 +228,14 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 
     /*
-     * Wait for the daemon, but keep the screen alive so boot looks sane.
-     * Opening a 640x480 sensor and importing numpy/picamera2 takes several
-     * seconds on a Pi Zero, so this must not be a one-shot attempt.
+     * The daemon may still be importing picamera2 when the UI is already on
+     * screen, so linking is retried from the main loop instead of blocking
+     * boot here.  Touch is opened the same way, which also means the
+     * calibration wizard can appear before the camera is ready.
      */
     memset(&state, 0, sizeof(state));
     state.video_mode = CAM_VIDEO_1080P30;
     ui_set_link(ui, 0);
-    for (int attempt = 0; attempt < 50 && g_running; ++attempt) {
-        ipc = ipc_open(0);
-        if (ipc != NULL && ipc_ready(ipc)) {
-            ui_set_link(ui, 1);
-            break;
-        }
-        if (ipc != NULL) {
-            ipc_close(ipc);
-            ipc = NULL;
-        }
-        ui_draw(ui, &state, NULL);
-        fb_present(&fb);
-        usleep(200 * 1000);
-    }
-
-    if (input_open(NULL) == 0) {
-        int swap_xy = 0, invert_x = 0, invert_y = 0;
-        input_set_screen(fb.w, fb.h);
-        /*
-         * The panel is rotated 270 degrees in the overlay but the ADS7846
-         * reports native axes; without this every tap lands 90 degrees away.
-         * With no saved calibration the UI runs the two-tap wizard.
-         */
-        if (touchcal_load(&swap_xy, &invert_x, &invert_y)) {
-            input_set_transform(swap_xy, invert_x, invert_y);
-            fprintf(stderr, "[ui] touch transform swap=%d invert_x=%d invert_y=%d\n",
-                    swap_xy, invert_x, invert_y);
-        } else {
-            fprintf(stderr, "[ui] no touch calibration; starting the wizard\n");
-            ui_begin_calibration(ui);
-        }
-    }
 
     {
         double last_log = now_ms();
@@ -279,6 +250,9 @@ int main(int argc, char **argv) {
         double last_frame_at = now_ms();
         double last_diag = now_ms();
         int diag_stage = -1;
+        int input_ready = 0;
+        int input_warned = 0;
+        double last_input_try = -1.0e9;
         const double period = 1000.0 / (double)target_fps;
 
         while (g_running) {
@@ -287,6 +261,39 @@ int main(int argc, char **argv) {
             double t2;
             InputEvent events[16];
             int n;
+
+            /*
+             * Touch is opened lazily and retried: evdev may not have the panel
+             * when the service starts, and a replugged panel should work too.
+             * Calibration runs every boot, so the saved transform is only a
+             * fallback for the case where the wizard times out.
+             */
+            if (!input_ready && now_ms() - last_input_try > 2000.0) {
+                last_input_try = now_ms();
+                if (input_open(NULL) == 0) {
+                    int swap_xy = 0, invert_x = 0, invert_y = 0;
+                    input_ready = 1;
+                    input_set_screen(fb.w, fb.h);
+                    if (touchcal_load(&swap_xy, &invert_x, &invert_y)) {
+                        input_set_transform(swap_xy, invert_x, invert_y);
+                        fprintf(stderr,
+                                "[ui] previous touch transform "
+                                "swap=%d invert_x=%d invert_y=%d\n",
+                                swap_xy, invert_x, invert_y);
+                    }
+                    if (no_calibrate) {
+                        fprintf(stderr, "[ui] calibration skipped by option\n");
+                    } else {
+                        fprintf(stderr,
+                                "[ui] touch calibration on boot: tap the two "
+                                "crosses\n");
+                        ui_begin_calibration(ui);
+                    }
+                } else if (!input_warned) {
+                    fprintf(stderr, "[ui] touch device not found yet; retrying\n");
+                    input_warned = 1;
+                }
+            }
 
             /*
              * Reconnect: the daemon may still be starting, may have been
@@ -307,7 +314,14 @@ int main(int argc, char **argv) {
             }
 
             /* Input first: it is cheap and the fd is non-blocking. */
-            n = input_read(events, 16);
+            n = input_ready ? input_read(events, 16) : 0;
+            if (n < 0) {
+                input_close();
+                input_ready = 0;
+                last_input_try = now_ms();
+                n = 0;
+                fprintf(stderr, "[ui] touch device lost; will retry\n");
+            }
             for (int i = 0; i < n; ++i) {
                 ui_touch(ui, &events[i]);
             }

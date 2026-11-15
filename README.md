@@ -3,17 +3,30 @@
 **English** · [中文](README.zh-CN.md)
 
 [![build](https://github.com/hellohub1212/zerosnap/actions/workflows/build.yml/badge.svg)](https://github.com/hellohub1212/zerosnap/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20Zero-C51A4A?style=flat-square&logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/products/raspberry-pi-zero/)
+[![C11](https://img.shields.io/badge/C-11-00599C?style=flat-square&logo=c&logoColor=white)](native/src/ui.c)
+[![Python 3](https://img.shields.io/badge/Python-3-3776AB?style=flat-square&logo=python&logoColor=white)](app/)
+[![display](https://img.shields.io/badge/display-direct%20framebuffer-FFBF47?style=flat-square)](docs/architecture.md)
+[![fps](https://img.shields.io/badge/UI-26%20fps-4ADE80?style=flat-square)](docs/tuning.md)
 
 A pocket camera that boots straight into the viewfinder on a **Raspberry Pi Zero**
-with a **2.4" SPI LCD** — no desktop, no X11, no SDL, no pygame. The UI is C++
+with a **2.4" SPI LCD** — no desktop, no X11, no SDL, no pygame. The UI is C11
 drawing directly into `/dev/fb1`; a small Python daemon owns the camera and talks
 to it through shared memory.
 
 ![Viewfinder](docs/screenshots/viewfinder.png)
 
-| Gallery | Settings | Touch calibration |
-|:---:|:---:|:---:|
-| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/settings.png) | ![](docs/screenshots/calibration.png) |
+| Gallery | Photo view |
+|:---:|:---:|
+| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/photo.png) |
+
+| Settings | Touch calibration |
+|:---:|:---:|
+| ![](docs/screenshots/settings.png) | ![](docs/screenshots/calibration.png) |
+
+*Rendered from the real 320×240 UI. The sample photos are synthetic landscapes,
+not third-party images.*
 
 ## Contents
 
@@ -48,20 +61,22 @@ pixels straight into the panel's framebuffer — took the same hardware to
 **26.5 fps**, which is the SPI link's ceiling (153,600 bytes per frame at
 31.25 MHz = 39 ms).
 
-So this is not "a Python app rewritten in C++ for speed". It is a camera that
+So this is not "a Python app rewritten in C for speed". It is a camera that
 does not use a display server at all.
 
 ## Features
 
-- **Boots to the viewfinder** in ~8 s. No login, no desktop.
+- **Boots in ~8 s** to a two-tap calibration screen, then the viewfinder. No
+  login, no desktop.
 - **26 fps** on a 320×240 panel over SPI (panel-limited, not CPU-limited).
 - **5 MP stills** (2592×1944) from an OV5647.
 - **On-device gallery** with instant thumbnails: the daemon pre-renders a
   320×240 RGB565 preview next to each photo, so the UI never decodes a JPEG.
 - **Photos land on the FAT32 boot partition** (`/boot/firmware/Camera`), so you
   can pull them off on Windows or macOS with no extra tools.
-- **Touch calibration wizard** — the panel is rotated 270° while the ADS7846
-  reports native axes; two taps solve the transform.
+- **Touch calibration on every boot** — the panel is rotated 270° while the
+  ADS7846 reports native axes; two taps solve the transform before you use the
+  camera. The saved config is only the fallback if the wizard times out.
 - **Crash-safe**: a supervisor restarts the camera daemon, the UI reconnects
   every second, and after three fast failures the console stays on the screen
   with the log instead of a black panel.
@@ -122,9 +137,9 @@ The display is rotated 270° by the panel overlay, but the ADS7846 reports the
 panel's native axes. Without a transform every tap lands 90° away — which looks
 exactly like "the buttons don't work".
 
-On first boot the UI shows a two-tap wizard. Tap the two crosses; the transform
-is solved and stored in `/boot/firmware/zerosnap-touch.conf` (FAT32, editable
-from Windows):
+On every boot the UI shows a two-tap wizard before the viewfinder settles. Tap
+the two crosses; the transform is solved and stored in
+`/boot/firmware/zerosnap-touch.conf` (FAT32, editable from Windows):
 
 ```
 swap=1
@@ -132,14 +147,15 @@ invert_x=0
 invert_y=1
 ```
 
-Re-run it any time from **Settings → Touch calibration**. If no touch event
-arrives for 45 s the wizard gives up, so the device never gets stuck.
+If no touch event arrives for 45 s the wizard gives up and the saved transform
+is used, so the device never gets stuck on the calibration screen. Re-run the
+wizard any time from **Settings → Touch calibration**.
 
 ## How it works
 
 ```
 ┌──────────────────────────────┐          ┌──────────────────────────────┐
-│ zerosnap-ui           (C++)  │          │ app.daemon          (Python) │
+│ zerosnap-ui           (C11)  │          │ app.daemon          (Python) │
 │                              │          │                              │
 │  /dev/fb1   direct mmap      │  shared  │  Picamera2 / libcamera       │
 │  /dev/input evdev touch      │◀────────▶│  still capture → JPEG        │
@@ -192,7 +208,7 @@ app/                 Python camera daemon
   camera_shm.py        the Python half of the shm contract
   backend/             Picamera2 service (and a mock for laptops)
   media/storage.py     sequence-numbered file names
-native/              C++ UI, zero third-party dependencies
+native/              C11 UI, zero third-party dependencies
   src/fb.c             /dev/fb1 open/mmap/present
   src/gfx.c            RGB565 primitives
   src/text.c           pre-rendered glyph blitter
@@ -203,6 +219,8 @@ native/              C++ UI, zero third-party dependencies
   src/ui.c             views, hit testing, drawing
   src/main.c           the loop
   src/text_data.c      generated glyph atlas
+  tools/gen_font.py    build-time text atlas generator
+  tools/make_screenshots.py  README screenshots from the real UI
 install/             installer, systemd unit, launcher, panel overlay
 docs/                architecture, tuning, screenshots
 ```
@@ -220,6 +238,10 @@ pressure-only, transforms), the shared-memory frame/state/command protocol in
 both languages, media scanning and cache invalidation, the calibration solver
 (all eight transforms), and an end-to-end test that pushes a frame through
 shared memory and asserts the pixels that reached the framebuffer.
+
+`make screenshots` re-renders the images above from the actual UI
+(`native/tools/make_screenshots.py`, needs Pillow). The scenes are generated, so
+the repository carries no third-party photographs.
 
 ## Limitations
 

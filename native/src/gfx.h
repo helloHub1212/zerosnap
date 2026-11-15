@@ -34,6 +34,13 @@ void gfx_circle(Gfx *g, int cx, int cy, int r, uint16_t color);
 void gfx_fill_round(Gfx *g, int x, int y, int w, int h, int r, uint16_t color);
 
 /*
+ * Alpha blend of a rounded rectangle.  Used for press highlights and soft
+ * shadows; per-row spans keep it cheap enough for the 26 fps draw path.
+ */
+void gfx_fill_round_alpha(Gfx *g, int x, int y, int w, int h, int r,
+                          uint16_t color, int alpha);
+
+/*
  * Alpha blend of a solid colour over the destination.
  * alpha 0..255, applied per pixel (used for the status strip / toast).
  */

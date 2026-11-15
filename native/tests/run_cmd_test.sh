@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cross-language command test: C++ sends a shutter command, Python receives it.
+# Cross-language command test: C sends a shutter command, Python receives it.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"

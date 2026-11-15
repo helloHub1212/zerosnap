@@ -3,16 +3,28 @@
 [English](README.md) · **中文**
 
 [![build](https://github.com/hellohub1212/zerosnap/actions/workflows/build.yml/badge.svg)](https://github.com/hellohub1212/zerosnap/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20Zero-C51A4A?style=flat-square&logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/products/raspberry-pi-zero/)
+[![C11](https://img.shields.io/badge/C-11-00599C?style=flat-square&logo=c&logoColor=white)](native/src/ui.c)
+[![Python 3](https://img.shields.io/badge/Python-3-3776AB?style=flat-square&logo=python&logoColor=white)](app/)
+[![display](https://img.shields.io/badge/display-direct%20framebuffer-FFBF47?style=flat-square)](docs/architecture.md)
+[![fps](https://img.shields.io/badge/UI-26%20fps-4ADE80?style=flat-square)](docs/tuning.md)
 
 一台**开机直接进取景框**的随身相机：树莓派 Zero + 2.4 寸 SPI 屏，
-**不启动桌面、不用 X11、不用 SDL、不用 pygame**。界面是 C++ 直接写
+**不启动桌面、不用 X11、不用 SDL、不用 pygame**。界面是 C11 直接写
 `/dev/fb1`，相机由一个小 Python 守护进程负责，两者通过共享内存通信。
 
 ![取景](docs/screenshots/viewfinder.png)
 
-| 相册 | 设置 | 触摸校准 |
-|:---:|:---:|:---:|
-| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/settings.png) | ![](docs/screenshots/calibration.png) |
+| 相册 | 照片 |
+|:---:|:---:|
+| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/photo.png) |
+
+| 设置 | 触摸校准 |
+|:---:|:---:|
+| ![](docs/screenshots/settings.png) | ![](docs/screenshots/calibration.png) |
+
+*截图由真实的 320×240 界面渲染；示例照片是合成风景，不是第三方图片。*
 
 ## 目录
 
@@ -44,20 +56,20 @@ X11 → 传统 framebuffer → `fbcp` → `vc_dispmanx_snapshot()` → SPI 屏�
 把整条链路删掉、直接往面板的 framebuffer 写 16 位像素之后，同一块板子跑到了
 **26.5 fps** —— 这已经是 SPI 的上限（153,600 字节/帧，31.25 MHz 下 39 ms）。
 
-所以这不是"把 Python 用 C++ 重写一遍来提速"，而是一台**根本不使用显示服务器**
+所以这不是"把 Python 用 C 重写一遍来提速"，而是一台**根本不使用显示服务器**
 的相机。
 
 ## 功能
 
-- **开机约 8 秒进取景框**，没有登录、没有桌面；
+- **开机约 8 秒**先进入两点校准，再进取景框，没有登录、没有桌面；
 - **26 fps**（320×240 SPI 屏，瓶颈在面板不在 CPU）；
 - **500 万像素拍照**（2592×1944，OV5647）；
 - **机内相册**：守护进程给每张照片预生成 320×240 RGB565 预览，
   界面不需要解码 JPEG，翻页是即时的；
 - **照片存在 FAT32 启动分区**（`/boot/firmware/Camera`），
   插到 Windows / macOS 上直接就能拷走；
-- **触摸校准向导**：屏幕被旋转了 270°，而 ADS7846 上报的是面板原始轴，
-  点两下自动算出轴变换；
+- **每次开机都校准触摸**：屏幕被旋转了 270°，而 ADS7846 上报的是面板原始轴，
+  开机先点两下自动算出轴变换，再进取景框；保存的配置只在向导超时时兜底；
 - **不怕崩**：守护进程有监督循环，界面每秒重连共享内存；连续失败 3 次后
   把 console 留在屏幕上并写日志，而不是黑屏；
 - **不联网、不上云、没有遥测。**
@@ -116,7 +128,7 @@ sudo bash install/install.sh --root /mnt/card --boot /mnt/cardboot
 屏幕在 overlay 里被旋转了 270°，但 ADS7846 上报的是面板原始坐标。
 如果不做轴变换，所有点击都会偏 90° —— 表现就是"按钮按了没反应"。
 
-首次开机会出现两点校准：依次点两个十字，程序从 8 种轴变换里选出正确的
+每次开机会先出现两点校准：依次点两个十字，程序从 8 种轴变换里选出正确的
 那个，结果写到 `/boot/firmware/zerosnap-touch.conf`（FAT32，Windows 可直接改）：
 
 ```
@@ -125,14 +137,14 @@ invert_x=0
 invert_y=1
 ```
 
-之后可以在 **设置 → 触摸校准** 重新来一次。如果 45 秒内没有任何触摸事件，
-向导会自动退出，不会把设备卡在校准页。
+如果 45 秒内没有任何触摸事件，向导会自动退出并沿用保存的变换，不会把设备
+卡在校准页。之后可以在 **设置 → 触摸校准** 随时重新校准。
 
 ## 工作原理
 
 ```
 ┌──────────────────────────────┐          ┌──────────────────────────────┐
-│ zerosnap-ui           (C++)  │          │ app.daemon          (Python) │
+│ zerosnap-ui           (C11)  │          │ app.daemon          (Python) │
 │                              │          │                              │
 │  /dev/fb1   直接 mmap        │   共享   │  Picamera2 / libcamera       │
 │  /dev/input evdev 触摸       │◀────────▶│  拍照 → JPEG                 │
@@ -183,7 +195,7 @@ app/                 Python 相机守护进程
   camera_shm.py        共享内存协议的 Python 半边
   backend/             Picamera2 服务（以及给电脑用的 mock）
   media/storage.py     序号命名
-native/              C++ 界面，零第三方依赖
+native/              C11 界面，零第三方依赖
   src/fb.c             /dev/fb1 打开 / mmap / 提交
   src/gfx.c            RGB565 绘图原语
   src/text.c           预渲染字形 blit
@@ -194,6 +206,8 @@ native/              C++ 界面，零第三方依赖
   src/ui.c             视图、命中测试、绘制
   src/main.c           主循环
   src/text_data.c      生成的字体图集
+  tools/gen_font.py    构建期字体图集生成器
+  tools/make_screenshots.py  从真实界面生成 README 截图
 install/             安装脚本、systemd 单元、启动脚本、屏幕 overlay
 docs/                架构、调优、截图
 ```
@@ -210,6 +224,10 @@ make test
 共享内存的帧/状态/命令协议（C 与 Python 两端）、媒体扫描与缓存失效、
 校准求解（8 种变换全测）、以及一个端到端测试——把一帧写进共享内存，
 再读回 framebuffer 断言像素。
+
+`make screenshots` 会从真实界面重新生成上面的截图
+（`native/tools/make_screenshots.py`，需要 Pillow）。画面由脚本合成，
+仓库里不包含任何第三方照片。
 
 ## 限制
 

@@ -1,4 +1,4 @@
-"""Receives one command from the C++ side through the shared memory."""
+"""Receives one command from the C side through the shared memory."""
 import os
 import sys
 import time

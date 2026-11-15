@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end check of the C++ UI: a fake daemon publishes a frame through
+# End-to-end check of the C UI: a fake daemon publishes a frame through
 # /dev/shm, the UI must render it into the framebuffer.
 #
 # Runs entirely on the build host: the "framebuffer" is a plain file.

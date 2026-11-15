@@ -42,9 +42,20 @@ distinguishes "starting", "camera not started" and "no signal" on purpose.
 | Camera | `app/daemon.py`, `app/backend/` |
 | Build / install | `native/Makefile`, `install/install.sh` |
 
-`native/src/cam.h` is the contract between C++ and Python. If you change the
+`native/src/cam.h` is the contract between C and Python. If you change the
 struct, both sides must change together and `native/tests/ipc_test.c` must be
 updated.
+
+## Generated files
+
+- `native/src/text_data.c` is produced by `native/tools/gen_font.py`; do not
+  edit it by hand. To change labels, add the UTF-8 string to
+  `native/tools/strings.txt`, copy `DroidSansFallbackFull.ttf` and
+  `Piboto-Regular.ttf` into `native/assets/` (gitignored), then run
+  `make -C native fonts`.
+- `docs/screenshots/*.png` are produced by `make screenshots`, which drives the
+  real UI over generated media (`native/tools/make_screenshots.py`, needs
+  Pillow). Do not commit photographs you do not have the rights to.
 
 ## Commit messages
 

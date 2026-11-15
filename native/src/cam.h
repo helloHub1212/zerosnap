@@ -1,5 +1,5 @@
 /*
- * cam.h - shared contract between the C++ UI and the Python camera daemon.
+ * cam.h - shared contract between the C UI and the Python camera daemon.
  *
  * Design rules:
  *  - No third party libraries.  Only libc / pthread / kernel headers.
@@ -9,7 +9,7 @@
  *    commands).  No JSON, no parsing, no allocation on the hot path.
  *
  * All fields are fixed width and naturally aligned so the same memory can be
- * written from Python (struct/mmap) and read from C++.
+ * written from Python (struct/mmap) and read from C.
  */
 #ifndef CAM_H
 #define CAM_H

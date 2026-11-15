@@ -1,8 +1,8 @@
-"""Camera daemon for the native C++ UI.
+"""Camera daemon for the native C UI.
 
 The daemon owns everything that needs Python: the camera, the encoder and the
 SD card.  It publishes preview frames, state and side files through one
-POSIX shared memory segment; the C++ ``zerosnap-ui`` process owns the panel and
+POSIX shared memory segment; the C ``zerosnap-ui`` process owns the panel and
 the touchscreen.
 
 Run with::
@@ -99,7 +99,7 @@ def to_rgb565(rgb: np.ndarray) -> bytes:
 
 
 class PreviewWorker(threading.Thread):
-    """Generate the 320x240 RGB565 previews the C++ gallery reads.
+    """Generate the 320x240 RGB565 previews the C gallery reads.
 
     Photos are decoded with Pillow's draft mode (1/8 scale DCT) and video
     posters come from one ffmpeg frame.  It runs at the lowest priority the

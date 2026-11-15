@@ -6,6 +6,7 @@
 #   make            build zerosnap-ui and zerosnap-bench
 #   make fonts      regenerate the pre-rendered text atlas
 #   make test       run the host unit tests
+#   make screenshots  render the README images (needs Pillow)
 #   make install    copy the binaries to /opt/zerosnap (needs root)
 
 CC ?= gcc
@@ -47,6 +48,9 @@ test: all
 screenshot: zerosnap-ui
 	./zerosnap-ui --fb /tmp/zerosnap-fb.img --screenshot /tmp/zerosnap-ui.ppm
 
+screenshots: zerosnap-ui
+	python3 tools/make_screenshots.py
+
 install: zerosnap-ui zerosnap-bench
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 0755 zerosnap-ui $(DESTDIR)$(PREFIX)/bin/zerosnap-ui
@@ -56,4 +60,4 @@ clean:
 	rm -f zerosnap-ui zerosnap-bench
 	rm -rf build
 
-.PHONY: all fonts test screenshot install clean
+.PHONY: all fonts test screenshot screenshots install clean
