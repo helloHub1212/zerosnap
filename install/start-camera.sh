@@ -45,8 +45,13 @@ log() {
     printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"
 }
 
+# Seconds since boot; the same clock the kernel and systemd journals use, so
+# the camera start can be lined up with `journalctl -o short-monotonic`.
+up() { cut -d' ' -f1 /proc/uptime 2>/dev/null || echo '?'; }
+
 {
     printf '\n===== native camera start %s =====\n' "$(date '+%F %T %Z')"
+    printf 'uptime: %s s\n' "$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo '?')"
     printf 'user: %s (uid=%s)\n' "$(id -un)" "$(id -u)"
     printf 'kernel: %s\n' "$(uname -a)"
     printf 'python: %s\n' "$(python3 --version 2>&1 || true)"
@@ -62,7 +67,10 @@ chmod 1777 /dev/shm 2>/dev/null || true
 
 wait_for_fb() {
     local count=0
-    while [ "$count" -lt 80 ]; do
+    # The panel driver can take a while to appear (module autoload + ILI9340
+    # init).  The daemon is already running by now, so waiting longer here only
+    # delays the UI, never the camera import.
+    while [ "$count" -lt 200 ]; do
         if [ -e /dev/fb1 ]; then
             return 0
         fi
@@ -71,12 +79,6 @@ wait_for_fb() {
     done
     return 1
 }
-
-if wait_for_fb; then
-    log "framebuffer /dev/fb1 已就绪"
-else
-    log "警告：等待 /dev/fb1 超时（8 秒），继续启动"
-fi
 
 # Compile the small C helpers on first run (I420->RGB, RGB888->RGB565).
 NATIVE_SRC="$APP_DIR/app/backend/native/yuv420.c"
@@ -119,7 +121,15 @@ cd "$APP_DIR" || exit 1
 daemon_supervisor() {
     local n=0
     while true; do
-        python3 -m app.daemon >> "$LOG" 2>&1
+        # The daemon does all of the heavy startup work (numpy, picamera2).
+        # On a single-core Pi Zero, letting it outrank the static boot screen
+        # cuts several seconds off the time to the first frame.  `nice` needs
+        # root; a development run simply falls back to normal priority.
+        if [ "$(id -u)" -eq 0 ]; then
+            nice -n -10 python3 -m app.daemon >> "$LOG" 2>&1
+        else
+            python3 -m app.daemon >> "$LOG" 2>&1
+        fi
         local rc=$?
         n=$((n + 1))
         log "daemon 退出（rc=$rc，第 $n 次），2 秒后重启"
@@ -179,7 +189,16 @@ fi
 
 start_daemon
 
+# Start the daemon first and wait for the panel in parallel.  Python's import
+# of numpy/picamera2 is the long pole, and it does not need /dev/fb1 at all.
+if wait_for_fb; then
+    log "framebuffer /dev/fb1 已就绪 (uptime $(up)s)"
+else
+    log "警告：等待 /dev/fb1 超时（20 秒），继续启动 (uptime $(up)s)"
+fi
+
 started="$(date +%s)"
+log "启动 zerosnap-ui (uptime $(up)s)"
 "$UI" >> "$LOG" 2>&1
 rc=$?
 finished="$(date +%s)"
@@ -191,6 +210,22 @@ if [ "$rc" -eq 0 ]; then
     log "zerosnap-ui 正常退出"
     printf '0\n' > "$COUNTER"
     printf '0\n' > "$FIRST_FAIL"
+    exit 0
+fi
+
+# 42 is the settings page's "退出到桌面" request.  The daemon has already been
+# stopped above; start the desktop in its own unit so systemd does not kill the
+# helper when zerosnap-ui.service is stopped by Conflicts=lightdm.service.
+if [ "$rc" -eq 42 ]; then
+    log "退出到桌面"
+    printf '0\n' > "$COUNTER"
+    printf '0\n' > "$FIRST_FAIL"
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --no-block start zerosnap-desktop.service >> "$LOG" 2>&1 \
+            || log "无法启动 zerosnap-desktop.service"
+    else
+        log "错误：没有 systemctl，无法启动桌面"
+    fi
     exit 0
 fi
 

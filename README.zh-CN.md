@@ -106,12 +106,15 @@ sudo reboot
 2. 安装 `zerosnap-ui.service` 并占用 tty1，停用 LightDM / fbcp；
 3. 写入屏幕 overlay 和刷新参数；
 4. 预编译 `libyuv420.so`，保证开机不需要调用编译器；
-5. 创建 `/boot/firmware/Camera` 和 `.preview` 缓存目录。
+5. 创建 `/boot/firmware/Camera` 和 `.preview` 缓存目录；
+6. 把 Xorg 指到 `/dev/fb1`，并把 LightDM 的自动登录会话设成 LXDE。
 
-随时可以回到桌面：
+回到桌面：**设置 → 退出到桌面**。相机会先正常停止，然后 LightDM 启动
+LXDE；桌面上的 **ZeroSnap 相机** 图标可以一键切回相机。命令行等价于：
 
 ```bash
-sudo systemctl start lightdm      # 会通过 Conflicts= 停掉 zerosnap-ui
+sudo systemctl start zerosnap-desktop   # 相机 -> 桌面
+sudo systemctl start zerosnap-ui        # 桌面 -> 相机
 ```
 
 ### 在电脑上交叉编译
@@ -176,6 +179,11 @@ invert_y=1
 | 提交（`memcpy` 进 `/dev/fb1`） | 18 ms |
 | 相机预览 | 25 fps（传感器模式上限） |
 | 整帧 SPI 传输 | 39 ms（理论上限 25.4 fps） |
+
+启动速度也做过专项优化：固件阶段从 15–29 秒（会因 FAT 修复而波动）降到约
+10 秒，取景器服务从 27–41 秒提前到约 12 秒。Python 导入与媒体分区挂载并行，
+PyAV 改为按需加载，LightDM 也不再为 SPI 屏根本不存在的 DRM 设备等 90 秒。
+细节和日志时间点见 [`docs/tuning.md`](docs/tuning.md)。
 
 瓶颈在面板。可以直接用 `zerosnap-bench` 测：
 

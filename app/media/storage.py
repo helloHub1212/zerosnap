@@ -80,7 +80,10 @@ class Storage:
                 "cannot create media directory %s: %s", self.media_dir, exc
             )
 
-        self._next_seq: int = self._scan_next_seq()
+        # The scan walks the whole FAT directory.  On a card with thousands of
+        # photos that is slow enough to delay the daemon's shared-memory
+        # handshake, so do it lazily on the first photo instead.
+        self._next_seq: int | None = None
 
     # ------------------------------------------------------------------
     # Sequence handling
@@ -109,6 +112,8 @@ class Storage:
     def _next_path(self, prefix: str, extension: str) -> str:
         """Return a fresh, unused path for ``prefix`` and ``extension``."""
         with self._lock:
+            if self._next_seq is None:
+                self._next_seq = self._scan_next_seq()
             seq = self._next_seq
             # Skip names that appeared after the initial scan (e.g. the user
             # copied files onto the card, or another process wrote one).

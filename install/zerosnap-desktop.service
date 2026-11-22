@@ -1,0 +1,14 @@
+[Unit]
+Description=Leave ZeroSnap and start the LXDE desktop
+# A transient helper, started by start-camera.sh when the settings page asks
+# for the desktop.  It lives outside zerosnap-ui.service's cgroup because
+# starting LightDM stops the camera unit (Conflicts=).  The helper itself is
+# oneshot and exits as soon as LightDM's start job is queued.
+After=zerosnap-ui.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/zerosnap/exit-to-desktop.sh
+TimeoutStartSec=30
+StandardOutput=journal
+StandardError=journal

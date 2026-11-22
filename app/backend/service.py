@@ -382,20 +382,35 @@ class Picamera2Service:
             self._set_error(f"picamera2 unavailable: {exc}")
             return False
 
-        try:
-            cam = Picamera2()
-            sensor = self._read_sensor_size(cam)
-            self._cam = cam
-            self._encoder_cls = H264Encoder
-            self._output_cls = FfmpegOutput
-            with self._lock:
-                self._state.sensor_max = sensor
-            logger.info("camera opened, sensor %dx%d", sensor[0], sensor[1])
-            return True
-        except Exception as exc:
-            logger.exception("cannot open the camera")
-            self._set_error(f"cannot open the camera: {exc}")
-            return False
+        # At ~8 s into boot libcamera may not have enumerated the OV5647 yet.
+        # The old code waited for global_camera_info() first; retrying
+        # Picamera2() directly removes that extra probe (and its fixed sleep)
+        # while still tolerating a slow sensor probe.
+        deadline = time.monotonic() + 8.0
+        announced = False
+        while not self._stop_flag.is_set():
+            try:
+                cam = Picamera2()
+                sensor = self._read_sensor_size(cam)
+                self._cam = cam
+                self._encoder_cls = H264Encoder
+                self._output_cls = FfmpegOutput
+                with self._lock:
+                    self._state.sensor_max = sensor
+                logger.info("camera opened, sensor %dx%d", sensor[0], sensor[1])
+                return True
+            except Exception as exc:
+                if self._stop_flag.is_set():
+                    return False
+                if time.monotonic() >= deadline:
+                    logger.exception("cannot open the camera")
+                    self._set_error(f"cannot open the camera: {exc}")
+                    return False
+                if not announced:
+                    logger.info("camera not ready yet (%s); retrying", exc)
+                    announced = True
+                self._stop_flag.wait(0.2)
+        return False
 
     @staticmethod
     def _read_sensor_size(cam: Any) -> tuple[int, int]:
@@ -472,7 +487,12 @@ class Picamera2Service:
 
         last_error: Exception | None = None
         sensor_modes: list[dict[str, Any] | None] = [None]
-        if mode == "photo":
+        # Asking for cam.sensor_modes makes Picamera2 run a configure pass for
+        # every mode of the sensor (four of them on an OV5647) before the real
+        # preview config is built.  The default configuration already picks
+        # the small 640x480 mode for a 320x240 preview, so the probe is pure
+        # startup cost.  Keep it as an opt-in escape hatch for odd sensors.
+        if mode == "photo" and os.environ.get("CAMERA_PROBE_SENSOR_MODES") == "1":
             preview_sensor = self._pick_preview_sensor_mode()
             if preview_sensor is not None:
                 sensor_modes = [preview_sensor, None]

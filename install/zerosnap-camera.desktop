@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ZeroSnap 相机
+Name[zh_CN]=ZeroSnap 相机
+Comment=返回 ZeroSnap 相机界面
+Comment[zh_CN]=返回 ZeroSnap 相机界面
+Exec=/opt/zerosnap/return-to-camera.sh
+Icon=camera-photo
+Terminal=false
+Categories=Graphics;Photography;
+StartupNotify=false

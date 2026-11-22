@@ -1,8 +1,18 @@
 [Unit]
 Description=Native camera UI (framebuffer, no X)
-After=local-fs.target dev-shm.mount
-Conflicts=lightdm.service getty@tty1.service
-Before=getty@tty1.service
+# Start as early as the root filesystem is writable instead of waiting for
+# basic.target.  The daemon's Python import (numpy + picamera2) costs 10-25 s
+# on a Pi Zero, so every second the unit starts earlier is a second off the
+# time to the first live frame.  start-camera.sh starts the daemon first and
+# only then waits for /dev/fb1, so the panel appearing a few seconds later is
+# harmless.
+DefaultDependencies=no
+After=systemd-remount-fs.service
+# Conflicts= + After= makes "return to camera" wait for LightDM to release
+# /dev/fb1 before the UI opens it.
+After=lightdm.service
+Conflicts=lightdm.service getty@tty1.service shutdown.target
+Before=getty@tty1.service shutdown.target
 StartLimitIntervalSec=120
 StartLimitBurst=3
 

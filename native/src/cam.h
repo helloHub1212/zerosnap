@@ -35,7 +35,13 @@ enum {
     CAM_CMD_NONE = 0,
     CAM_CMD_SHUTTER = 1, /* take a photo */
     CAM_CMD_REFRESH = 7, /* re-scan the media directory */
-    CAM_CMD_QUIT = 8
+    CAM_CMD_QUIT = 8,
+    /*
+     * Leave the camera and start the desktop.  The UI exits with status 42 so
+     * start-camera.sh can tell this apart from a crash; the daemon treats it
+     * exactly like QUIT.
+     */
+    CAM_CMD_DESKTOP = 9
 };
 
 /* Daemon -> UI flags. */

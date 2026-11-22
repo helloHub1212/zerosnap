@@ -42,7 +42,9 @@ static void usage(const char *argv0) {
     fprintf(stderr,
             "usage: %s [--fb DEVICE] [--fps N] [--screenshot FILE] [--view V]\n"
             "          [--frames N] [--preview FILE] [--calibrate] [--no-calibrate]\n"
+            "          [--tap X,Y]\n"
             "  --screenshot renders one frame to a PPM file and exits\n"
+            "  --tap injects one tap after startup (test hook)\n"
             "  V is one of: viewfinder, gallery, photo, settings\n",
             argv0);
 }
@@ -150,6 +152,9 @@ int main(int argc, char **argv) {
     int target_fps = 30;
     int shot_calibrate = 0;
     int no_calibrate = 0;
+    int desktop_requested = 0;
+    int tap_x = -1;
+    int tap_y = -1;
     long max_frames = 0; /* 0 = run until signalled */
 
     for (int i = 1; i < argc; ++i) {
@@ -169,6 +174,10 @@ int main(int argc, char **argv) {
             no_calibrate = 1;
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             max_frames = atol(argv[++i]);
+        } else if (strcmp(argv[i], "--tap") == 0 && i + 1 < argc) {
+            if (sscanf(argv[++i], "%d,%d", &tap_x, &tap_y) != 2) {
+                tap_x = tap_y = -1;
+            }
         } else if (strcmp(argv[i], "--help") == 0) {
             usage(argv[0]);
             return 0;
@@ -237,6 +246,19 @@ int main(int argc, char **argv) {
     state.video_mode = CAM_VIDEO_1080P30;
     ui_set_link(ui, 0);
 
+    /* Test hook: tap a coordinate once, after the requested view is set. */
+    if (tap_x >= 0 && tap_y >= 0) {
+        InputEvent tap;
+        ui_set_view(ui, shot_view);
+        memset(&tap, 0, sizeof(tap));
+        tap.action = IN_DOWN;
+        tap.x = tap_x;
+        tap.y = tap_y;
+        ui_touch(ui, &tap);
+        tap.action = IN_UP;
+        ui_touch(ui, &tap);
+    }
+
     {
         double last_log = now_ms();
         int frames = 0;
@@ -254,6 +276,14 @@ int main(int argc, char **argv) {
         int input_warned = 0;
         double last_input_try = -1.0e9;
         const double period = 1000.0 / (double)target_fps;
+        /*
+         * Before the first camera frame the screen is static.  Redrawing it at
+         * 30 fps only steals CPU from the Python daemon, which is still
+         * importing numpy/picamera2 on the Pi's single core.  Ten frames per
+         * second is plenty for the calibration wizard and halves the daemon's
+         * startup time.
+         */
+        const double idle_period = 100.0;
 
         while (g_running) {
             double t0 = now_ms();
@@ -353,6 +383,12 @@ int main(int argc, char **argv) {
                 }
                 if (cmd == CAM_CMD_QUIT) {
                     g_running = 0;
+                } else if (cmd == CAM_CMD_DESKTOP) {
+                    desktop_requested = 1;
+                    if (ipc != NULL) {
+                        ipc_send(ipc, cmd, arg);
+                    }
+                    g_running = 0;
                 } else if (ipc != NULL) {
                     ipc_send(ipc, cmd, arg);
                 }
@@ -394,7 +430,9 @@ int main(int argc, char **argv) {
             }
 
             {
-                double remaining = period - (now_ms() - t0);
+                double budget = (ipc == NULL || !frame_valid) ? idle_period
+                                                              : period;
+                double remaining = budget - (now_ms() - t0);
                 if (remaining > 1.0) {
                     usleep((useconds_t)(remaining * 1000.0));
                 }
@@ -403,12 +441,16 @@ int main(int argc, char **argv) {
     }
 
     if (ipc != NULL) {
-        ipc_send(ipc, CAM_CMD_QUIT, 0);
+        /* The desktop command was already forwarded; a second QUIT would be
+         * harmless but makes the log harder to read. */
+        if (!desktop_requested) {
+            ipc_send(ipc, CAM_CMD_QUIT, 0);
+        }
         ipc_close(ipc);
     }
     input_close();
     ui_destroy(ui);
     fb_close(&fb);
     free(frame);
-    return 0;
+    return desktop_requested ? 42 : 0;
 }

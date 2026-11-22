@@ -100,3 +100,89 @@ divider and therefore the SPI clock. If you overclock, fix the core clock:
 core_freq=250
 core_freq_min=250
 ```
+
+## Boot latency
+
+Measured on the same Pi Zero v1.3 (kernel 6.12.109+rpt-rpi-v6, ~9 MB/s SD):
+
+| Stage | Before | After |
+|---|---|---|
+| Firmware → `Booting Linux` | 15.6–28.6 s (varied with FAT repair) | ~10.3 s |
+| `zerosnap-ui.service` started | 27–41 s | ~11.8 s |
+| UI process in `app.log` | ~40 s | ~12–13 s |
+
+Firmware variance was caused by the FAT boot partition being dirty: the
+firmware repaired it at boot, which took ~13 s extra. The installer now sets
+
+```
+auto_initramfs=0
+display_auto_detect=0
+boot_delay=0
+```
+
+and changes the `/boot/firmware` fstab entry to pass `0` with `flush,noatime`.
+The kernel has ext4, MMC, the BCM2835 SD controller and SCSI built in
+(`=y`), so no initramfs is needed to mount root. Unused `initramfs7*`,
+`initramfs8` and the stale `FSCK*.REC` files are removed (about 50 MB).
+The original `initramfs` is kept for rollback.
+
+`zerosnap-ui.service` starts with `DefaultDependencies=no` right after
+`systemd-remount-fs.service` instead of waiting for `basic.target`. The SPI
+panel modules are preloaded through `etc/modules-load.d/zerosnap-panel.conf`,
+and `glamor-test`, `sshswitch` and three `Persistent=true` timers are masked.
+`systemd-timesyncd` moved from `sysinit.target.wants` to
+`multi-user.target.wants` (it cannot sync before the network is up anyway).
+
+**`default.target` stays `graphical.target`.** LXDE needs `udisks2.service`
+from `graphical.target.wants`; without it `gvfs-udisks2-volume-monitor`
+segfaults and `pcmanfm`/`lxpanel` crash, leaving a black desktop with only a
+mouse cursor. LightDM is not started at boot (`display-manager.service` is
+removed), so this does not bring back the old startup delay.
+
+## Camera start-up
+
+The slow part is Python, not libcamera: importing `numpy` + `picamera2` takes
+10–15 s on ARMv6. Three things overlap or remove that cost:
+
+1. The daemon publishes shared memory first, so the UI can link and draw
+   "camera starting" while Python is still loading.
+2. `app/daemon.py` starts the import in a helper thread and waits for the
+   `/boot/firmware` mount in parallel. The helper calls `os.nice(10)` so it
+   does not starve udev on the single core — at the daemon's default `nice -10`
+   the camera kernel drivers were delayed by ~11 s.
+3. `install/patch-picamera2.py` replaces four module-level `import av`
+   statements with a lazy proxy. Still photos never load PyAV/libav; video
+   loads it on first use. Originals are kept as `*.zerosnap.bak`.
+
+**Do not call `Picamera2.global_camera_info()` before the camera drivers are
+ready.** libcamera's `CameraManager.singleton()` enumerates cameras once per
+process and caches the result. An early call freezes an empty camera list and
+the UI stays on "camera not started" forever. `Daemon.open()` waits for
+`/dev/media*` before the first enumeration; if enumeration still fails, the
+daemon exits so the supervisor restarts it with a fresh singleton.
+
+Timeline markers in `/var/log/zerosnap/app.log` (all times are uptime):
+
+```
+daemon: modules loaded, initializing (uptime ...)
+daemon: media partition ready (...)
+daemon: camera imports preloaded (...)
+daemon: camera media devices ready (...)
+libcamera sees 1 camera(s), first is ov5647
+daemon: first preview published (...)
+```
+
+## Switching to the desktop
+
+LightDM's vendor unit waits for `dev-dri-card0.device` and
+`dev-dri-renderD128.device`. Those devices never exist with the legacy fbdev
+panel, so the start job timed out after 90 s. A drop-in cannot remove
+`Wants=`/`After=` entries — those lists are additive across unit files. The
+installer therefore writes a **full override** to
+`/etc/systemd/system/lightdm.service` with the two device names stripped, and
+removes the old ineffective drop-in. The override is written during install, so
+the normal exit path does not need `systemctl daemon-reload`.
+
+`exit-to-desktop.sh` also makes sure `udisks2.service` and
+`accounts-daemon.service` are active before starting LightDM, for the reason
+described above.

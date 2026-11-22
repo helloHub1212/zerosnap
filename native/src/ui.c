@@ -49,9 +49,10 @@ static const R PHOTO_NEXT = {184, 202, 44, 30};
 #define GRID_PER_PAGE (GRID_COLS * GRID_ROWS)
 
 #define SET_X 8
-#define SET_Y 48
+#define SET_Y 46
 #define SET_W 304
-#define SET_ROW_H 38
+#define SET_ROW_H 31
+#define SETTINGS_ROWS 6
 
 #define THUMB_W 36
 #define THUMB_H 27
@@ -93,7 +94,8 @@ enum {
     HIT_PAGE_NEXT,
     HIT_PHOTO_PREV,
     HIT_PHOTO_NEXT,
-    HIT_TOUCH_ROW
+    HIT_TOUCH_ROW,
+    HIT_DESKTOP_ROW
 };
 
 enum {
@@ -296,6 +298,16 @@ static void icon_chevron(Gfx *g, int cx, int cy, int s, int right,
     int dir = right ? 1 : -1;
     gfx_line(g, cx - dir * s / 2, cy - s / 2, cx + dir * s / 2, cy, color);
     gfx_line(g, cx + dir * s / 2, cy, cx - dir * s / 2, cy + s / 2, color);
+}
+
+/* A small monitor: the "leave the camera, show the desktop" row. */
+static void icon_desktop(Gfx *g, int cx, int cy, uint16_t color) {
+    int w = 16;
+    int h = 11;
+
+    gfx_frame(g, cx - w / 2, cy - h / 2 - 2, w, h, color);
+    gfx_hline(g, cx - 5, cy + h / 2 + 2, 10, color);
+    gfx_vline(g, cx, cy + h / 2 - 1, 3, color);
 }
 
 /* Three sliders: the modern replacement for a gear at this size. */
@@ -720,8 +732,8 @@ static void draw_photo(Ui *ui, const CamShm *st) {
 /* ----------------------------------------------------------------- settings */
 
 static void draw_tile(Gfx *g, int x, int y, uint16_t tint) {
-    gfx_fill_round(g, x, y, 26, 26, 8, C_SURFACE_HI());
-    gfx_fill_round_alpha(g, x, y, 26, 26, 8, tint, 34);
+    gfx_fill_round(g, x, y, 24, 24, 7, C_SURFACE_HI());
+    gfx_fill_round_alpha(g, x, y, 24, 24, 7, tint, 34);
 }
 
 static R setting_row(int index) {
@@ -740,33 +752,39 @@ static void draw_setting_row(Ui *ui, int index, const char *label,
     R r = setting_row(index);
     int th = text_line_height(12);
     int ty = r.y + (r.h - th) / 2;
+    int tx = r.x + 12;
+    int tcx = tx + 12;
+    int tcy = r.y + r.h / 2;
 
     if (index > 0) {
-        gfx_hline(g, 58, r.y, SET_W - 50, C_LINE_SOFT());
+        gfx_hline(g, 48, r.y, SET_W - 40, C_LINE_SOFT());
     }
 
-    draw_tile(g, r.x + 14, r.y + 6, tint);
+    draw_tile(g, tx, r.y + (r.h - 24) / 2, tint);
     switch (icon) {
     case 0:
-        icon_camera_small(g, r.x + 14 + 13, r.y + 6 + 13, tint);
+        icon_camera_small(g, tcx, tcy, tint);
         break;
     case 1:
-        icon_sd(g, r.x + 14 + 13, r.y + 6 + 13, tint);
+        icon_sd(g, tcx, tcy, tint);
         break;
     case 2: {
         unsigned pct = ui->st.battery_pct > 100 ? 100 : ui->st.battery_pct;
-        icon_battery(g, r.x + 14 + 13, r.y + 6 + 13, (int)pct, tint);
+        icon_battery(g, tcx, tcy, (int)pct, tint);
         break;
     }
     case 3:
-        icon_crosshair(g, r.x + 14 + 13, r.y + 6 + 13, tint);
+        icon_crosshair(g, tcx, tcy, tint);
+        break;
+    case 5:
+        icon_desktop(g, tcx, tcy, tint);
         break;
     default:
-        icon_info(g, r.x + 14 + 13, r.y + 6 + 13, tint);
+        icon_info(g, tcx, tcy, tint);
         break;
     }
 
-    text_clip(g, label, r.x + 50, ty, 12, C_TEXT(), r.x, r.y, r.w, r.h);
+    text_clip(g, label, r.x + 44, ty, 12, C_TEXT(), r.x, r.y, r.w, r.h);
     if (value != NULL) {
         int vw = text_width(value, 12);
         text_clip(g, value, r.x + r.w - 12 - vw, ty, 12, C_TEXT2(), r.x, r.y,
@@ -785,7 +803,8 @@ static void draw_settings(Ui *ui, const CamShm *st) {
     text_clip_center(g, "设置", 48, 0, SCREEN_W - 96, 44, 16, C_TEXT(), 1);
     gfx_hline(g, 0, 44, SCREEN_W, C_LINE_SOFT());
 
-    panel(g, SET_X, SET_Y, SET_W, SET_ROW_H * 5, 12, C_SURFACE());
+    panel(g, SET_X, SET_Y, SET_W, SET_ROW_H * SETTINGS_ROWS, 12,
+          C_SURFACE());
 
     draw_setting_row(ui, 0, "照片规格", "2592x1944", C_ACCENT(), 0);
 
@@ -806,6 +825,7 @@ static void draw_settings(Ui *ui, const CamShm *st) {
 
     draw_setting_row(ui, 3, "触摸校准", NULL, C_PURPLE(), 3);
     draw_setting_row(ui, 4, "关于", APP_VERSION, C_GRAY(), 4);
+    draw_setting_row(ui, 5, "退出到桌面", NULL, C_BLUE(), 5);
 }
 
 /* -------------------------------------------------------------- calibration */
@@ -981,9 +1001,15 @@ static int hit_test(Ui *ui, int x, int y, R *out, int *round) {
         return HIT_NONE;
 
     case VIEW_SETTINGS: {
-        R row = setting_row(3);
+        R touch = setting_row(3);
+        R desktop = setting_row(5);
         if (inside(BACK_RECT, x, y)) { *out = BACK_RECT; *round = 9; return HIT_BACK; }
-        if (inside(row, x, y)) { *out = row; *round = 10; return HIT_TOUCH_ROW; }
+        if (inside(touch, x, y)) {
+            *out = touch; *round = 10; return HIT_TOUCH_ROW;
+        }
+        if (inside(desktop, x, y)) {
+            *out = desktop; *round = 10; return HIT_DESKTOP_ROW;
+        }
         return HIT_NONE;
     }
     }
@@ -1091,6 +1117,10 @@ static void handle_tap(Ui *ui, int x, int y) {
             ui->view = VIEW_VIEWFINDER;
         } else if (inside(setting_row(3), x, y)) {
             ui_begin_calibration(ui);
+        } else if (inside(setting_row(5), x, y)) {
+            /* The main loop forwards this and exits with status 42, which
+             * tells start-camera.sh to bring up the desktop. */
+            enqueue(ui, CAM_CMD_DESKTOP, 0);
         }
         break;
     }

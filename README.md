@@ -114,12 +114,16 @@ The installer:
 2. installs `zerosnap-ui.service` on tty1 and disables LightDM / fbcp;
 3. adds the panel overlay and tuning to `config.txt`;
 4. pre-compiles `libyuv420.so` so boot never runs a compiler;
-5. creates `/boot/firmware/Camera` and its `.preview` cache.
+5. creates `/boot/firmware/Camera` and its `.preview` cache;
+6. points Xorg at `/dev/fb1` and sets LightDM's autologin session to LXDE.
 
-Back to the desktop at any time:
+Back to the desktop: **Settings → 退出到桌面**. The camera stops cleanly and
+LightDM starts LXDE; the **ZeroSnap 相机** icon on the desktop switches back.
+The command-line equivalents are:
 
 ```bash
-sudo systemctl start lightdm      # zerosnap-ui is stopped by Conflicts=
+sudo systemctl start zerosnap-desktop   # camera -> desktop
+sudo systemctl start zerosnap-ui        # desktop -> camera
 ```
 
 ### Cross-compiling from a PC
@@ -189,6 +193,12 @@ Measured on a Pi Zero v1.3, 320×240, SPI requested 32 MHz (31.25 MHz effective)
 | Present (`memcpy` into `/dev/fb1`) | 18 ms |
 | Camera preview | 25 fps (sensor-mode limit) |
 | Full-frame SPI transfer | 39 ms (theoretical ceiling 25.4 fps) |
+
+Startup was tuned too: firmware → kernel dropped from 15–29 s (it varied with
+FAT repair) to ~10 s, and the viewfinder service now starts at ~12 s instead of
+27–41 s. The Python import overlaps the media-mount wait, PyAV is loaded lazily,
+and LightDM no longer waits 90 s for DRM devices that the SPI panel never
+provides. Details and measured markers: [`docs/tuning.md`](docs/tuning.md).
 
 The panel is the bottleneck. `zerosnap-bench` measures it directly:
 

@@ -7,9 +7,13 @@ run on a PC.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-import numpy as np
+if TYPE_CHECKING:
+    # Annotations are strings (PEP 563), so importing numpy here costs the
+    # camera daemon nothing at startup.  It is imported later, after the
+    # shared-memory segment is already visible to the C UI.
+    import numpy as np
 
 
 @dataclass
